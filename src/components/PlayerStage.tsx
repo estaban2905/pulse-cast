@@ -6,6 +6,7 @@ import { ClockWidget } from './ClockWidget';
 import { NowPlayingBadge } from './NowPlayingBadge';
 import { ProgressBar } from './ProgressBar';
 import { IdleScreen } from './IdleScreen';
+import { PairingScreen } from './PairingScreen';
 import { CoverMode } from './modes/CoverMode';
 import { LyricsMode } from './modes/LyricsMode';
 import { StageVisualizer } from './modes/StageVisualizer';
@@ -24,7 +25,7 @@ const EASE = [0.23, 1, 0.32, 1] as const;
  * la imagen (*overscan*), y sin él los títulos se comen las esquinas.
  */
 export function PlayerStage() {
-  const { mode, idle } = usePlayer();
+  const { mode, idle, pairingCode } = usePlayer();
 
   const framed = mode === 'cover' || mode === 'lyrics';
 
@@ -35,7 +36,11 @@ export function PlayerStage() {
 
       <BackgroundFX />
 
-      {idle ? (
+      {/* El código manda sobre todo lo demás: sin emparejar no hay nada que
+          enseñar, y quien mira necesita saber exactamente qué teclear. */}
+      {pairingCode ? (
+        <PairingScreen code={pairingCode} />
+      ) : idle ? (
         <IdleScreen />
       ) : (
         <>

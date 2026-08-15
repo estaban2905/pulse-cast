@@ -11,24 +11,21 @@ import { tracks as demoTracks } from '../data/tracks';
 import { hexToRgbTriplet, themes } from '../data/themes';
 import { audioSim } from '../utils/audioSim';
 import { fetchLyrics, noLyrics, type Lyrics } from '../services/lyricsApi';
-import {
-  isCastDevice,
-  startCastReceiver,
-  type CastMediaInfo
-} from '../cast/castReceiver';
+import { findTrack } from '../services/catalogApi';
+import { currentPosition, pollTv, type TvState } from '../services/tvApi';
+import { isCastDevice, startCastReceiver, type CastMediaInfo } from '../cast/castReceiver';
 import type { PlayerMode, Settings, Track, VisualTheme, VizStyle } from '../types/player';
 
 /**
- * El estado de la pantalla de la TV.
+ * El estado de la pantalla, venga de donde venga.
  *
- * Antes esto simulaba un reproductor entero: avanzaba la posición con un
- * `setInterval` y llevaba su propia cola de canciones. En un Chromecast eso
- * sobra y estorba —quien reproduce es el dispositivo y quien manda es el
- * teléfono—, así que aquí solo se refleja lo que llega.
+ * Hay tres formas de que una canción llegue hasta aquí, y las tres acaban en el
+ * mismo sitio para que los modos, el visualizador y el fondo no se enteren:
  *
- * Lo que **no** cambió es la forma de este contexto, y es deliberado: los modos,
- * el visualizador y el fondo siguen leyendo `track`, `position` y `settings`
- * exactamente igual que antes, y no hubo que tocar ni uno.
+ * - **Cast**: el Chromecast abre esta página y le pasa la canción. Es lo cómodo.
+ * - **Emparejada**: para Samsung y LG, que no hablan Cast. La pantalla enseña un
+ *   código y luego pregunta al servidor qué suena.
+ * - **Demostración**: `?demo=1`, para trabajar el diseño sin nada conectado.
  */
 
 const defaultSettings: Settings = {
@@ -50,8 +47,10 @@ const defaultSettings: Settings = {
   showPlaylist: false
 };
 
+/** Cada cuánto se le pregunta al servidor. */
+const POLL_MS = 2_000;
+
 interface PlayerContextValue {
-  /** Siempre una sola pista: la cola vive en el teléfono, no aquí. */
   tracks: Track[];
   track: Track;
   index: number;
@@ -62,20 +61,20 @@ interface PlayerContextValue {
   theme: VisualTheme;
   partyMode: boolean;
   settings: Settings;
-  /** Cierto mientras no haya llegado ninguna carga desde el teléfono. */
+  /** Nadie ha mandado música todavía. */
   idle: boolean;
-  /** Cierto cuando la letra trae marcas de tiempo y se puede resaltar. */
+  /** El código a enseñar, o nulo si no hay que emparejar. */
+  pairingCode: string | null;
+  /** No se pudo hablar con el servidor. */
+  offline: boolean;
   synced: boolean;
-  /** Falso en un Chromecast: no hay ratón ni teclado que ocultar. */
   chromeVisible: boolean;
   playlistOpen: boolean;
-  /** Sin efecto aquí. La pantalla no manda, obedece. */
   seek: (seconds: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
-/** Lo que se ve mientras nadie ha enviado música todavía. */
 const idleTrack: Track = {
   id: 'idle',
   title: 'Pulse',
@@ -88,45 +87,57 @@ const idleTrack: Track = {
   lyrics: []
 };
 
-/** Convierte lo que manda el Chromecast en la pista que las vistas esperan. */
-function toTrack(media: CastMediaInfo, lyrics: Lyrics): Track {
+function toTrack(
+  info: { id: string; title: string; artist: string; album: string; cover: string; duration: number },
+  lyrics: Lyrics
+): Track {
   return {
-    id: media.trackId ?? 'unknown',
-    title: media.title,
-    artist: media.artist,
-    album: media.album,
+    id: info.id,
+    title: info.title,
+    artist: info.artist,
+    album: info.album,
     year: new Date().getFullYear(),
-    duration: media.duration,
-    cover: media.coverUrl ?? '',
-    // El visualizador necesita un pulso y el API no manda BPM. 104 es un valor
-    // de andar por casa: la animación no pretende ir a compás, solo moverse.
+    duration: info.duration,
+    cover: info.cover,
+    // El visualizador necesita un pulso y el API no manda BPM. La animación no
+    // pretende ir a compás, solo moverse.
     bpm: 104,
     lyrics: lyrics.lines
   };
 }
 
+const fromCast = (media: CastMediaInfo) => ({
+  id: media.trackId ?? 'unknown',
+  title: media.title,
+  artist: media.artist,
+  album: media.album,
+  cover: media.coverUrl ?? '',
+  duration: media.duration
+});
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const onCast = isCastDevice();
+  const isDemo = !onCast && new URLSearchParams(window.location.search).has('demo');
+  const paired = !onCast && !isDemo;
 
-  const [media, setMedia] = useState<CastMediaInfo | null>(null);
+  const [info, setInfo] = useState<ReturnType<typeof fromCast> | null>(null);
   const [lyrics, setLyrics] = useState<Lyrics>(noLyrics);
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
   const [settings] = useState<Settings>(defaultSettings);
-  const [themeId] = useState('neon');
 
-  const theme = themes.find((t) => t.id === themeId) ?? themes[0];
+  const theme = themes.find((t) => t.id === 'neon') ?? themes[0];
 
-  /* ------------------------------------------------------------------
-   * Chromecast
-   * ------------------------------------------------------------------ */
+  /* ---------------- Chromecast ---------------- */
 
   useEffect(() => {
     if (!onCast) return;
 
-    const started = startCastReceiver({
-      onMedia: (next) => {
-        setMedia(next);
+    startCastReceiver({
+      onMedia: (media) => {
+        setInfo(fromCast(media));
         setPosition(0);
         setLyrics(noLyrics);
       },
@@ -135,38 +146,96 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setPosition(seconds);
       },
       onEnded: () => {
-        setMedia(null);
+        setInfo(null);
         setIsPlaying(false);
         setPosition(0);
         setLyrics(noLyrics);
       }
     });
-
-    if (!started) {
-      // El SDK estaba al cargar y desapareció: no debería pasar, pero dejar la
-      // pantalla en blanco sería peor que enseñar el reposo.
-      setMedia(null);
-    }
   }, [onCast]);
 
-  /* ------------------------------------------------------------------
-   * Modo de demostración, fuera de un Chromecast
-   *
-   * Existe para poder abrir esta página en un navegador y ver el diseño sin
-   * emparejar nada. La posición avanza sola porque aquí no hay reproductor que
-   * la dicte; en la TV, esto no llega a ejecutarse.
-   * ------------------------------------------------------------------ */
+  /* ---------------- Emparejada (Samsung, LG, navegador) ---------------- */
+
+  const currentId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (onCast) return;
+    if (!paired) return;
+
+    let cancelled = false;
+
+    const tick = async () => {
+      const state: TvState = await pollTv();
+      if (cancelled) return;
+
+      setOffline(state.status === 'offline');
+
+      if (state.status === 'pairing') {
+        setPairingCode(state.code);
+        setInfo(null);
+        setIsPlaying(false);
+        return;
+      }
+
+      setPairingCode(null);
+
+      if (state.status === 'idle') {
+        setInfo(null);
+        setIsPlaying(false);
+        currentId.current = null;
+        return;
+      }
+
+      if (state.status !== 'playing') return;
+
+      const { nowPlaying } = state;
+      setIsPlaying(nowPlaying.isPlaying);
+      setPosition(currentPosition(nowPlaying));
+
+      // Solo se resuelve el catálogo al cambiar de canción, no en cada vuelta.
+      if (currentId.current !== nowPlaying.trackId) {
+        currentId.current = nowPlaying.trackId;
+        setLyrics(noLyrics);
+
+        const track = await findTrack(nowPlaying.trackId);
+        if (cancelled || currentId.current !== nowPlaying.trackId) return;
+
+        setInfo(
+          track
+            ? {
+                id: track.id,
+                title: track.title,
+                artist: track.artist,
+                album: track.album,
+                cover: track.coverUrl,
+                duration: track.duration
+              }
+            : // El catálogo no la conoce —recién publicada, o caché viejo—. Se
+              // enseña lo que se sabe en vez de quedarse en la pantalla de espera.
+              { id: nowPlaying.trackId, title: 'Reproduciendo', artist: '', album: '', cover: '', duration: 0 }
+        );
+      }
+    };
+
+    void tick();
+    const timer = window.setInterval(() => void tick(), POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [paired]);
+
+  /* ---------------- Demostración ---------------- */
+
+  useEffect(() => {
+    if (!isDemo) return;
 
     const demo = demoTracks[0];
-    setMedia({
-      trackId: null,
+    setInfo({
+      id: demo.id,
       title: demo.title,
       artist: demo.artist,
       album: demo.album,
-      coverUrl: demo.cover,
+      cover: demo.cover,
       duration: demo.duration
     });
     setLyrics({ synced: true, lines: demo.lyrics });
@@ -176,49 +245,34 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setPosition((p) => (p + 0.25 >= demo.duration ? 0 : p + 0.25));
     }, 250);
     return () => window.clearInterval(id);
-  }, [onCast]);
+  }, [isDemo]);
 
-  /* ------------------------------------------------------------------
-   * Letra de la pista en curso
-   * ------------------------------------------------------------------ */
+  /* ---------------- Letra ---------------- */
 
-  const trackId = media?.trackId ?? null;
+  const trackId = info?.id ?? null;
 
   useEffect(() => {
-    if (!onCast || !trackId) return;
+    if (isDemo || !trackId || trackId === 'unknown') return;
 
     const controller = new AbortController();
     void fetchLyrics(trackId, controller.signal).then(setLyrics);
     return () => controller.abort();
-  }, [onCast, trackId]);
+  }, [isDemo, trackId]);
 
-  /* ------------------------------------------------------------------
-   * Presentación
-   * ------------------------------------------------------------------ */
+  /* ---------------- Presentación ---------------- */
 
-  const idle = media === null;
-  const track = useMemo(
-    () => (media ? toTrack(media, lyrics) : idleTrack),
-    [media, lyrics]
-  );
+  const idle = info === null;
+  const track = useMemo(() => (info ? toTrack(info, lyrics) : idleTrack), [info, lyrics]);
 
   /**
-   * Qué se enseña, decidido solo.
+   * Qué se enseña, decidido solo. En una TV no hay dónde pulsar.
    *
-   * En una TV no hay dónde pulsar, así que el modo no puede ser una elección
-   * del que mira. Sin nada cargado, el reposo; con letra sincronizada, la
-   * letra; en cualquier otro caso, la carátula.
-   *
-   * Se exige `synced` y no basta con que haya versos: una letra sin marcas
-   * llega con todos los tiempos a cero, y el karaoke —que busca el último verso
-   * ya empezado— los daría todos por cantados y resaltaría el final de la
+   * Se exige `synced` para la letra: una sin marcas llega con todos los tiempos
+   * a cero y el karaoke los daría todos por cantados, resaltando el final de la
    * canción desde el primer segundo.
    */
   const mode: PlayerMode = idle ? 'visualizer' : lyrics.synced ? 'lyrics' : 'cover';
 
-  /* Alimenta el analizador simulado. En un Chromecast no hay forma de leer el
-     audio real que está sonando, así que la animación sigue al estado de
-     reproducción y al pulso supuesto, no a la señal. */
   useEffect(() => {
     audioSim.playing = isPlaying;
     audioSim.bpm = track.bpm;
@@ -232,23 +286,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty('--c2-rgb', hexToRgbTriplet(theme.colors[1]));
     root.style.setProperty('--c3-rgb', hexToRgbTriplet(theme.colors[2]));
     root.style.setProperty('--bg-rgb', hexToRgbTriplet(theme.bg));
-  }, [theme]);
-
-  useEffect(() => {
-    const root = document.documentElement;
     root.style.setProperty('--glow', String(settings.glow * settings.lightIntensity));
     root.style.setProperty('--brightness', String(settings.brightness));
     root.style.setProperty('--panel-opacity', String(settings.panelOpacity));
-  }, [settings.glow, settings.lightIntensity, settings.brightness, settings.panelOpacity]);
+  }, [theme, settings.glow, settings.lightIntensity, settings.brightness, settings.panelOpacity]);
 
   /**
-   * Entre dos `TIME_UPDATE` pasan cientos de milisegundos y la letra se vería
-   * a saltos. Esto interpola en medio; cada aviso real del dispositivo vuelve a
-   * fijar la posición, así que la cuenta nunca se separa de la verdad.
+   * Entre dos avisos pasan segundos y la letra se vería a saltos. Esto interpola
+   * en medio; cada consulta real vuelve a fijar la posición, así que la cuenta
+   * nunca se separa de la verdad.
    */
   const lastTick = useRef(Date.now());
   useEffect(() => {
-    if (!onCast || !isPlaying) return;
+    if (isDemo || !isPlaying) return;
 
     lastTick.current = Date.now();
     const id = window.setInterval(() => {
@@ -258,7 +308,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setPosition((p) => p + delta);
     }, 100);
     return () => window.clearInterval(id);
-  }, [onCast, isPlaying]);
+  }, [isDemo, isPlaying]);
 
   const seek = useCallback(() => undefined, []);
 
@@ -275,12 +325,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       partyMode: false,
       settings,
       idle,
+      pairingCode,
+      offline,
       synced: lyrics.synced,
       chromeVisible: true,
       playlistOpen: false,
       seek
     }),
-    [track, isPlaying, position, mode, theme, settings, idle, lyrics.synced, seek]
+    [track, isPlaying, position, mode, theme, settings, idle, pairingCode, offline, lyrics.synced, seek]
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
