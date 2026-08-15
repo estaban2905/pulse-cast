@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* `import.meta.env`, que es de donde sale `VITE_API_URL`. */
+    "types": ["vite/client"],
+
+    /* Linting */
+    "strict": true,
+    /* Con `jsx: react-jsx` el `import React` de cada componente no se usa nunca,
+       y esta regla lo marcaba como error en los doce archivos del diseño. Se
+       apaga aquí, igual que en pulse-web, en vez de tocarlos uno a uno. */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

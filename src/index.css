@@ -1,0 +1,75 @@
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+:root {
+  --c1-rgb: 255 46 152;
+  --c2-rgb: 56 227 255;
+  --c3-rgb: 150 108 255;
+  --bg-rgb: 5 6 12;
+  --glow: 1;
+  --brightness: 1;
+  --panel-opacity: 0.55;
+}
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+body {
+  margin: 0;
+  background: rgb(var(--bg-rgb));
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+}
+/* Scale the whole experience up on 4K TV panels so text stays readable at 2-5m */
+@media (min-width: 2560px) {
+  html {
+    font-size: 22px;
+  }
+}
+.glass {
+  background: rgba(10, 12, 22, var(--panel-opacity));
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.text-glow {
+  text-shadow: 0 0 calc(18px * var(--glow)) rgb(var(--c1-rgb) / 0.55),
+    0 0 calc(52px * var(--glow)) rgb(var(--c3-rgb) / 0.35);
+}
+.ring-glow {
+  box-shadow: 0 0 calc(60px * var(--glow)) rgb(var(--c1-rgb) / 0.35),
+    0 0 calc(140px * var(--glow)) rgb(var(--c2-rgb) / 0.2),
+    0 40px 90px rgba(0, 0, 0, 0.7);
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.no-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(var(--c1-rgb) / 0.4);
+  border-radius: 999px;
+}
+.no-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.stage {
+  filter: brightness(var(--brightness));
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage *,
+  .stage *::before,
+  .stage *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

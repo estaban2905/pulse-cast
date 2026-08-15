@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pulse TV</title>
+    <meta name="description" content="Receptor de Google Cast de Pulse Music: carátula, letra sincronizada y visualizador en la televisión." />
+    <meta name="theme-color" content="#08080B" />
+
+    <!--
+      El SDK del receptor, servido por Google.
+
+      Va aquí y sin `type="module"` a propósito: tiene que existir `window.cast`
+      antes de que arranque la aplicación, porque `castReceiver.ts` decide en su
+      primera línea si esto es un Chromecast o un navegador normal.
+
+      Fuera de un Chromecast este script simplemente no define nada, y la página
+      entra en modo de demostración. Por eso se puede abrir en el escritorio.
+    -->
+    <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Pulse TV necesita JavaScript.</noscript>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+name: Publicar en GitHub Pages
+
+# Cast exige HTTPS y una URL estable para el receptor. Publicar a mano desde el
+# escritorio significaría que el registro apunta a lo que subió alguien la
+# última vez; así apunta siempre a lo que hay en `main`.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un despliegue a la vez. Si llegan dos empujones seguidos, el segundo espera
+# en lugar de pisar al primero a medio subir.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # `PULSE_CAST_BASE` sale del nombre del repositorio, así que renombrarlo
+      # no deja el sitio servido desde una ruta que ya no existe.
+      - run: npm run build
+        env:
+          PULSE_CAST_BASE: /${{ github.event.repository.name }}/
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
