@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Manifiesto de la aplicación de Samsung TV.
+
+  Una app de Tizen para televisor es una aplicación web: el mismo HTML, CSS y
+  JavaScript que ya sirve de receptor de Cast. Lo único que cambia es que aquí va
+  empaquetada e instalada en el televisor en lugar de cargarse desde una URL.
+
+  `id` lo compone el prefijo del paquete y el nombre de la aplicación. El prefijo
+  de 10 caracteres lo asigna Samsung al publicar; el de aquí sirve para instalar
+  en modo desarrollador.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://estaban2905.github.io/pulse-cast"
+        version="1.0.0"
+        viewmodes="maximized">
+
+  <tizen:application id="PulseMusic1.PulseTV"
+                     package="PulseMusic1"
+                     required_version="2.4"/>
+
+  <name>Pulse TV</name>
+  <description>Carátula, letra sincronizada y visualizador de lo que suena en tu teléfono.</description>
+
+  <author href="https://github.com/estaban2905">Pulse Music</author>
+
+  <icon src="icon.png"/>
+  <content src="index.html"/>
+
+  <!--
+    Sin este permiso la aplicación no puede llamar a Pulse API y la pantalla se
+    queda en «Sin conexión» sin explicar por qué.
+  -->
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+
+  <!--
+    El televisor tiene que poder hablar con el API por HTTPS. Tizen bloquea por
+    defecto cualquier destino que no esté declarado aquí.
+
+    `subdomains="true"` cubre el dominio del almacenamiento de portadas, que
+    cambia de subdominio según la cuenta de Cloudflare.
+  -->
+  <access origin="https://pulse-api-mq9p.onrender.com" subdomains="true"/>
+  <access origin="https://r2.dev" subdomains="true"/>
+  <access origin="https://r2.cloudflarestorage.com" subdomains="true"/>
+
+  <!--
+    El `index.html` carga el SDK de Cast desde aquí. En un televisor Samsung no
+    sirve para nada —no es un Chromecast— pero si Tizen bloquea la petición deja
+    un error en consola en cada arranque. Declararlo sale más barato que montar
+    una variante del HTML solo para esto.
+  -->
+  <access origin="https://www.gstatic.com" subdomains="true"/>
+
+  <!--
+    Pantalla completa y sin barra de estado: esto se ve a tres metros y cualquier
+    adorno del sistema estorba.
+  -->
+  <tizen:setting screen-orientation="landscape"
+                 context-menu="disable"
+                 background-support="disable"
+                 encryption="disable"
+                 install-location="auto"
+                 hwkey-event="enable"/>
+
+  <!-- Declara que es una aplicación de televisor y no de móvil ni de reloj. -->
+  <tizen:profile name="tv"/>
+</widget>

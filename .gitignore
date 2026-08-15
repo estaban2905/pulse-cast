@@ -28,3 +28,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Carpeta que arma 'npm run tizen'. Se regenera; no va al repositorio.
+tizen-build
