@@ -77,10 +77,10 @@ export function CoverMode() {
                 <span className="truncate">{track.album}</span>
               </div> :
             null}
-            <h1 className="text-glow mt-3 font-display text-[clamp(2.75rem,5.6vw,6.5rem)] font-extrabold leading-[0.94] tracking-tight">
+            <h1 className="text-glow mt-3 font-display text-[5.6vw] font-extrabold leading-[0.94] tracking-tight">
               {track.title}
             </h1>
-            <p className="mt-4 font-display text-[clamp(1.5rem,2.4vw,2.75rem)] font-semibold text-c1">
+            <p className="mt-4 font-display text-[2.4vw] font-semibold text-c1">
               {track.artist}
             </p>
           </motion.div>

@@ -5,7 +5,6 @@ import "./index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
-import { setupTizen } from "./tizen";
 
 /**
  * Pinta el fallo en la pantalla.
@@ -34,13 +33,8 @@ function mostrarFallo(detalle: unknown): void {
     "</div></div>";
 }
 
-// Solo hace algo dentro de un televisor Samsung: le enseña a cerrarse con la
-// tecla «atrás» del mando. En cualquier otro sitio no toca nada.
-try {
-  setupTizen();
-} catch (error) {
-  mostrarFallo(error);
-}
+// El mando lo configura `PlayerContext`, que es quien sabe qué vistas hay para
+// moverse entre ellas.
 
 const rootEl = document.getElementById("root");
 if (rootEl) {

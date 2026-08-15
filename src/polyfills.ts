@@ -61,11 +61,24 @@ if (typeof raiz.globalThis === 'undefined') {
 const registro: string[] = [];
 raiz.__pulseErrors = registro;
 
+/**
+ * Ruido conocido que no es un fallo.
+ *
+ * `ResizeObserver loop limit exceeded` lo emite el propio navegador cuando una
+ * animación mide y redibuja en el mismo fotograma; framer-motion lo provoca en
+ * cada transición y no rompe nada. Sin filtrarlo, la pantalla de error tapaba
+ * una aplicación que funcionaba perfectamente.
+ */
+const RUIDO = /ResizeObserver loop/i;
+
 function anotar(origen: string, detalle: unknown): void {
   const texto =
     detalle instanceof Error
       ? `${detalle.name}: ${detalle.message}\n${detalle.stack ?? ''}`
       : String(detalle);
+
+  if (RUIDO.test(texto)) return;
+
   registro.push(`[${origen}] ${texto}`);
 
   const root = document.getElementById('root');

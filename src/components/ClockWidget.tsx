@@ -16,7 +16,7 @@ export function ClockWidget() {
 
   return (
     <div className="text-right">
-      <p className="text-glow font-display text-[clamp(2.5rem,4vw,4.5rem)] font-extrabold leading-none tabular-nums">
+      <p className="text-glow font-display text-[4vw] font-extrabold leading-none tabular-nums">
         {time}
       </p>
       <p className="mt-2 text-base font-semibold tracking-[0.24em] text-white/50">{date}</p>

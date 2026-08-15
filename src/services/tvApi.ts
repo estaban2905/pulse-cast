@@ -157,6 +157,42 @@ export async function pollTv(): Promise<TvState> {
   }
 }
 
+export type Orden =
+  | 'play'
+  | 'pause'
+  | 'next'
+  | 'previous'
+  | 'seek'
+  | 'shuffle'
+  | 'repeat'
+  | 'volume';
+
+/**
+ * Le pide algo al teléfono.
+ *
+ * El televisor no manda sobre la reproducción: la cola, el orden y la canción
+ * siguiente los decide el teléfono. Esto solo transmite la pulsación, y por eso
+ * los botones del mando funcionan aunque el audio lo esté sirviendo la TV.
+ *
+ * Los fallos se tragan a propósito: que una pausa no llegue no puede dejar la
+ * pantalla rota, y la siguiente pulsación lo intentará de nuevo.
+ */
+export async function enviarOrden(action: Orden, value?: number): Promise<void> {
+  const session = readStored();
+  if (!session) return;
+
+  try {
+    await fetch(`${API_URL}/tv/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Pulse-Tv-Token': session.token },
+      body: JSON.stringify(value === undefined ? { action } : { action, value })
+    });
+  } catch {
+    // Sin red la orden se pierde. Reintentar sola sería peor: una pausa que
+    // llega diez segundos tarde para el usuario ya no es una pausa.
+  }
+}
+
 /** Posición real ahora, extrapolada desde el último aviso del teléfono. */
 export function currentPosition(nowPlaying: NowPlaying): number {
   const base = nowPlaying.positionMs / 1000;

@@ -36,11 +36,11 @@ export function IdleScreen() {
 
         <h1
           className="font-display font-extrabold leading-none tracking-tight text-white"
-          style={{ fontSize: 'clamp(40px, 5.4vw, 108px)' }}>
+          style={{ fontSize: '5.4vw' }}>
           Pulse
         </h1>
 
-        <p className="mt-[2vh] text-white/45" style={{ fontSize: 'clamp(14px, 1.5vw, 30px)' }}>
+        <p className="mt-[2vh] text-white/45" style={{ fontSize: '1.5vw' }}>
           Envía una canción desde tu teléfono
         </p>
       </motion.div>

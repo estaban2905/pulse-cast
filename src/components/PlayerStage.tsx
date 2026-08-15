@@ -8,9 +8,14 @@ import { ProgressBar } from './ProgressBar';
 import { IdleScreen } from './IdleScreen';
 import { OfflineScreen } from './OfflineScreen';
 import { PairingScreen } from './PairingScreen';
+import { ControlBar } from './ControlBar';
+import { ModeSwitcher } from './ModeSwitcher';
+import { VizStylePicker } from './VizStylePicker';
 import { CoverMode } from './modes/CoverMode';
 import { LyricsMode } from './modes/LyricsMode';
 import { StageVisualizer } from './modes/StageVisualizer';
+import { VideoMode } from './modes/VideoMode';
+import { ImmersiveMode } from './modes/ImmersiveMode';
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -64,22 +69,33 @@ export function PlayerStage() {
                 {mode === 'cover' && <CoverMode />}
                 {mode === 'lyrics' && <LyricsMode />}
                 {mode === 'visualizer' && <StageVisualizer />}
+                {mode === 'party' && <StageVisualizer party />}
+                {mode === 'video' && <VideoMode />}
+                {mode === 'immersive' && <ImmersiveMode />}
               </motion.section>
             </AnimatePresence>
           </div>
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-8 px-[4vw] pt-[4vh]">
             <NowPlayingBadge />
+            {/* El selector de vista, del diseño original. Marca cuál está
+                activa, que es lo que orienta al pulsar las flechas. */}
+            <ModeSwitcher />
             <ClockWidget />
           </div>
 
-          {/* Solo en la letra: el modo carátula ya trae la suya, colocada
-              dentro de su propia columna. Dos barras a la vez se veían. */}
-          {mode === 'lyrics' ?
-          <div className="pointer-events-none absolute inset-x-0 bottom-[5vh] z-20 px-[6vw]">
-              <ProgressBar size="lg" />
+          {/* El estilo del visualizador, solo cuando se está viendo. */}
+          {(mode === 'visualizer' || mode === 'party') ?
+          <div className="pointer-events-none absolute right-[2vw] top-1/2 z-20 -translate-y-1/2">
+              <VizStylePicker />
             </div> :
           null}
+
+          {/* La barra de controles del diseño original. Cada botón manda una
+              orden al teléfono, que es quien tiene la cola y reproduce. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-[3vh] z-20 flex justify-center px-[3vw]">
+            <ControlBar />
+          </div>
         </>
       )}
 
@@ -91,9 +107,17 @@ export function PlayerStage() {
           resulta que el sitio donde más falta hace leer esto es justo cuando se
           prueba desde el teléfono. */}
       <p
-        className="pointer-events-none absolute bottom-2 left-3 right-3 z-30 font-sans text-white/55"
-        style={{ fontSize: 'clamp(12px, 0.85vw, 18px)' }}>
+        className="pointer-events-none absolute bottom-2 left-3 z-30 font-sans text-white/40"
+        style={{ fontSize: '0.85vw' }}>
         {diagnostic}
+      </p>
+
+      {/* Sin esto no hay forma de saber que el mando hace algo: una pantalla de
+          televisor no tiene dónde pulsar y nada indica qué teclas responden. */}
+      <p
+        className="pointer-events-none absolute bottom-2 right-3 z-30 font-sans text-white/40"
+        style={{ fontSize: '0.85vw' }}>
+        ◀ ▶ cambiar vista · ATRÁS salir
       </p>
     </main>);
 

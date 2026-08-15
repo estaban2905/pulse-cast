@@ -16,6 +16,15 @@ export interface CatalogTrack {
   album: string;
   coverUrl: string;
   duration: number;
+  /**
+   * El MP3, firmado y listo para sonar **en el televisor**.
+   *
+   * Es lo que convierte esta pantalla en algo útil: sin esto la TV solo dibuja
+   * lo que suena en el teléfono, y el sonido sigue saliendo por el altavoz del
+   * teléfono, que es exactamente lo que nadie quiere al enviar música a una
+   * televisión.
+   */
+  streamUrl: string;
 }
 
 interface RawCatalog {
@@ -28,6 +37,7 @@ interface RawCatalog {
     albumId: string;
     duration: number;
     coverUrl?: string;
+    streamUrl: string;
   }>;
 }
 
@@ -53,7 +63,8 @@ async function load(): Promise<Map<string, CatalogTrack>> {
       album: album?.title ?? '',
       // La pista puede traer portada propia; si no, hereda la del álbum.
       coverUrl: track.coverUrl ?? album?.coverUrl ?? '',
-      duration: track.duration
+      duration: track.duration,
+      streamUrl: track.streamUrl
     });
   }
 

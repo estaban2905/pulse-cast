@@ -8,6 +8,54 @@
 
 /* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
 
+/*
+ * Compatibilidad con el navegador del televisor.
+ *
+ * Tizen 5.5 lleva Chromium 69. La propiedad abreviada `inset` llegó en el 87,
+ * así que las clases `inset-0`, `inset-x-0` e `inset-y-0` de Tailwind —que
+ * generan `inset: 0px`— se descartan enteras por inválidas.
+ *
+ * El efecto no es sutil: todas las capas a pantalla completa (el fondo, el
+ * visualizador, la carátula) pierden su posición y el diseño se amontona en el
+ * centro con el texto al tamaño por defecto. Se veía exactamente así.
+ *
+ * Estas reglas dicen lo mismo con las cuatro propiedades de siempre, que
+ * Chromium 69 sí entiende. En un navegador moderno son redundantes e
+ * inofensivas.
+ */
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.inset-x-0 { left: 0; right: 0; }
+.inset-y-0 { top: 0; bottom: 0; }
+
+/*
+ * `aspect-ratio` es de Chromium 88, así que en el televisor la carátula queda
+ * con altura **cero**: se ve el hueco y ninguna imagen.
+ *
+ * El truco del relleno porcentual da el mismo cuadrado en cualquier navegador.
+ * Va dentro de `@supports not` para no sumarse al `aspect-ratio` real en un
+ * navegador moderno, donde duplicaría la altura.
+ */
+@supports not (aspect-ratio: 1 / 1) {
+  .aspect-square { position: relative; }
+  .aspect-square::before { content: ''; display: block; padding-bottom: 100%; }
+  .aspect-square > * { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+}
+
+/*
+ * Legibilidad en pantallas pequeñas.
+ *
+ * Los tamaños van en `vw` porque `clamp()` es de Chromium 79 y en el televisor
+ * se descarta, dejando el texto en los 16px por defecto. `vw` es lo correcto
+ * para una pantalla que siempre mide 1920, pero en un móvil de 390px deja el
+ * texto de apoyo en 5px. Esta media query —que Chromium 69 sí entiende— pone
+ * un suelo legible sin tocar la televisión.
+ */
+@media (max-width: 900px) {
+  .stage h1 { font-size: 34px !important; }
+  .stage p, .stage span, .stage div { font-size: 15px !important; }
+  .stage .text-glow { font-size: 40px !important; }
+}
+
 :root {
   --c1-rgb: 255 46 152;
   --c2-rgb: 56 227 255;

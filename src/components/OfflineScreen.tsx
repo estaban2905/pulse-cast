@@ -24,17 +24,17 @@ export function OfflineScreen() {
           className="mx-auto mb-[4vh] rounded-full border-2 border-white/20"
           style={{ width: '5vw', height: '5vw' }} />
 
-        <h1 className="font-display font-extrabold text-white" style={{ fontSize: 'clamp(24px, 3.4vw, 64px)' }}>
+        <h1 className="font-display font-extrabold text-white" style={{ fontSize: '3.4vw' }}>
           Sin conexión con Pulse
         </h1>
 
-        <p className="mt-[3vh] text-white/55" style={{ fontSize: 'clamp(14px, 1.5vw, 28px)', lineHeight: 1.5 }}>
+        <p className="mt-[3vh] text-white/55" style={{ fontSize: '1.5vw', lineHeight: 1.5 }}>
           El televisor no puede contactar con el servidor.
           <br />
           Comprueba que tenga internet.
         </p>
 
-        <p className="mt-[5vh] text-white/30" style={{ fontSize: 'clamp(12px, 1.1vw, 22px)' }}>
+        <p className="mt-[5vh] text-white/30" style={{ fontSize: '1.1vw' }}>
           Se reintenta solo cada pocos segundos.
         </p>
       </motion.div>

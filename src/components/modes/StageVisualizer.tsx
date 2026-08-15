@@ -72,11 +72,11 @@ export function StageVisualizer({ party = false }: StageVisualizerProps) {
           </div>
           <h2
             className="text-glow mt-3 truncate font-display font-extrabold leading-[0.95] tracking-tight"
-            style={{ fontSize: party ? 'clamp(3rem,6.4vw,7.5rem)' : 'clamp(2.2rem,4.2vw,5rem)' }}>
+            style={{ fontSize: party ? '6.4vw' : '4.2vw' }}>
             
             {track.title}
           </h2>
-          <p className="mt-2 font-display text-[clamp(1.3rem,2vw,2.4rem)] font-semibold text-white/75">
+          <p className="mt-2 font-display text-[2vw] font-semibold text-white/75">
             {track.artist}
           </p>
         </div>
