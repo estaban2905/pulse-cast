@@ -26,7 +26,7 @@ const EASE = [0.23, 1, 0.32, 1] as const;
  * la imagen (*overscan*), y sin él los títulos se comen las esquinas.
  */
 export function PlayerStage() {
-  const { mode, idle, pairingCode, offline } = usePlayer();
+  const { mode, idle, pairingCode, offline, diagnostic } = usePlayer();
 
   const framed = mode === 'cover' || mode === 'lyrics';
 
@@ -82,6 +82,15 @@ export function PlayerStage() {
           null}
         </>
       )}
+
+      {/* Siempre visible, discreto. En un televisor no hay consola: sin esta
+          línea, lo único que se puede reportar de un fallo es «no se ve nada»,
+          que es exactamente donde se atasca el diagnóstico. */}
+      <p
+        className="pointer-events-none absolute bottom-2 left-3 z-30 font-sans text-white/25"
+        style={{ fontSize: '0.85vw' }}>
+        {diagnostic}
+      </p>
     </main>);
 
 }

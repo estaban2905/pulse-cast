@@ -67,6 +67,14 @@ interface PlayerContextValue {
   pairingCode: string | null;
   /** No se pudo hablar con el servidor. */
   offline: boolean;
+  /**
+   * Qué está pasando, en una línea.
+   *
+   * Se enseña en una esquina siempre. En un televisor no hay consola que abrir,
+   * así que sin esto la única información disponible es «no se ve el código», y
+   * con eso no se diagnostica nada.
+   */
+  diagnostic: string;
   synced: boolean;
   chromeVisible: boolean;
   playlistOpen: boolean;
@@ -126,6 +134,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [position, setPosition] = useState(0);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
+  const [diagnostic, setDiagnostic] = useState('iniciando…');
   const [settings] = useState<Settings>(defaultSettings);
 
   const theme = themes.find((t) => t.id === 'neon') ?? themes[0];
@@ -168,6 +177,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
 
       setOffline(state.status === 'offline');
+      setDiagnostic(
+        state.status === 'offline'
+          ? state.reason
+          : state.status === 'pairing'
+            ? `esperando a que reclamen el código ${state.code}`
+            : state.status === 'idle'
+              ? 'emparejada, sin música'
+              : 'reproduciendo'
+      );
 
       if (state.status === 'pairing') {
         setPairingCode(state.code);
@@ -327,12 +345,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       idle,
       pairingCode,
       offline,
+      diagnostic,
       synced: lyrics.synced,
       chromeVisible: true,
       playlistOpen: false,
       seek
     }),
-    [track, isPlaying, position, mode, theme, settings, idle, pairingCode, offline, lyrics.synced, seek]
+    [track, isPlaying, position, mode, theme, settings, idle, pairingCode, offline, diagnostic, lyrics.synced, seek]
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

@@ -22,6 +22,15 @@ interface StoredSession {
   code: string;
   /** Cuándo deja de servir el código. Pasado eso se pide uno nuevo. */
   expiresAt: string;
+  /**
+   * Si alguien ya reclamó esta pantalla.
+   *
+   * Es lo que impide rotar la sesión de una TV emparejada. Sin esta marca, el
+   * código —que caducó a los dos minutos y cuya fecha queda en el pasado para
+   * siempre— hacía que la pantalla tirara su token y se desemparejara sola cada
+   * dos minutos, sin que el usuario tocara nada.
+   */
+  paired?: boolean;
 }
 
 export interface NowPlaying {
@@ -36,7 +45,11 @@ export type TvState =
   | { status: 'pairing'; code: string }
   | { status: 'idle' }
   | { status: 'playing'; nowPlaying: NowPlaying }
-  | { status: 'offline' };
+  /** `reason` se enseña en pantalla: en un televisor no hay consola que abrir. */
+  | { status: 'offline'; reason: string };
+
+/** Lo último que se supo, para poder enseñarlo en pantalla. */
+export let lastDiagnostic = 'iniciando…';
 
 function readStored(): StoredSession | null {
   try {
@@ -88,10 +101,14 @@ async function createSession(): Promise<StoredSession> {
 export async function pollTv(): Promise<TvState> {
   let session = readStored();
 
-  // Un código caducado y sin reclamar no sirve de nada: se pide otro. Que rote
-  // cada dos minutos es además lo correcto — un código en pantalla es, mientras
-  // vive, la llave para vincular ese televisor a cualquier cuenta.
-  if (session && Date.parse(session.expiresAt) < Date.now()) {
+  // Un código caducado y **sin reclamar** no sirve de nada: se pide otro. Que
+  // rote cada dos minutos es además lo correcto — un código en pantalla es,
+  // mientras vive, la llave para vincular ese televisor a cualquier cuenta.
+  //
+  // La condición de `paired` no es un detalle: sin ella, una pantalla ya
+  // emparejada también rotaba —su código caducó hace rato y esa fecha se queda
+  // en el pasado para siempre—, así que se desemparejaba sola cada dos minutos.
+  if (session && !session.paired && Date.parse(session.expiresAt) < Date.now()) {
     session = null;
   }
 
@@ -110,7 +127,9 @@ export async function pollTv(): Promise<TvState> {
       return { status: 'pairing', code: fresh.code };
     }
 
-    if (!response.ok) return { status: 'offline' };
+    if (!response.ok) {
+      return { status: 'offline', reason: `El servidor respondió ${response.status} al preguntar` };
+    }
 
     const payload = (await response.json()) as {
       paired: boolean;
@@ -118,12 +137,23 @@ export async function pollTv(): Promise<TvState> {
     };
 
     if (!payload.paired) return { status: 'pairing', code: session.code };
+
+    // Se anota en cuanto se sabe: a partir de aquí esta pantalla no rota más,
+    // por muy caducado que esté el código con el que se emparejó.
+    if (!session.paired) writeStored({ ...session, paired: true });
+
     if (!payload.nowPlaying) return { status: 'idle' };
     return { status: 'playing', nowPlaying: payload.nowPlaying };
-  } catch {
+  } catch (error) {
     // Sin red: se conserva la sesión y se avisa. Borrarla obligaría a volver a
     // vincular por un corte de wifi de diez segundos.
-    return { status: 'offline' };
+    //
+    // El motivo viaja hasta la pantalla porque este es exactamente el punto
+    // donde un origen que falta en `CORS_ORIGINS` se ve igual que un cable
+    // desenchufado, y desde el sofá no hay forma de distinguirlos.
+    const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    lastDiagnostic = reason;
+    return { status: 'offline', reason };
   }
 }
 
