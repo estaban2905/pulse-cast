@@ -83,8 +83,21 @@ declare global {
   }
 }
 
-/** Cierto cuando la página corre dentro de un Chromecast. */
-export const isCastDevice = (): boolean => Boolean(window.cast?.framework);
+/**
+ * Cierto solo cuando la página corre **dentro de un Chromecast**.
+ *
+ * No basta con mirar si existe `window.cast`. El SDK se carga desde `gstatic`
+ * con una etiqueta `<script>` normal y define ese objeto en **cualquier**
+ * navegador: comprobar su presencia daba cierto en un móvil y en el navegador
+ * de un televisor, así que la página entraba en modo Cast, se quedaba esperando
+ * una canción que nunca llegaba, y nunca llegaba a pedir código de
+ * emparejamiento. Desde fuera se veía como una pantalla de reposo eterna.
+ *
+ * `CrKey` es la marca que Google pone en el user-agent de sus dispositivos de
+ * Cast, y es lo que de verdad los distingue.
+ */
+export const isCastDevice = (): boolean =>
+Boolean(window.cast?.framework) && /\bCrKey\//i.test(navigator.userAgent);
 
 const emptyMedia: CastMediaInfo = {
   trackId: null,

@@ -128,13 +128,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const isDemo = !onCast && new URLSearchParams(window.location.search).has('demo');
   const paired = !onCast && !isDemo;
 
+  // Qué camino tomó, a la vista. Distinguir «se cree un Chromecast» de «está
+  // emparejando» costó una tarde de pruebas a ciegas: desde fuera los dos se
+  // veían igual, una pantalla de reposo que no hacía nada.
+  const channel = onCast ? 'cast' : isDemo ? 'demo' : 'emparejada';
+
   const [info, setInfo] = useState<ReturnType<typeof fromCast> | null>(null);
   const [lyrics, setLyrics] = useState<Lyrics>(noLyrics);
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
-  const [diagnostic, setDiagnostic] = useState('iniciando…');
+  const [diagnostic, setDiagnostic] = useState(`modo ${channel} · iniciando…`);
   const [settings] = useState<Settings>(defaultSettings);
 
   const theme = themes.find((t) => t.id === 'neon') ?? themes[0];
@@ -178,13 +183,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       setOffline(state.status === 'offline');
       setDiagnostic(
-        state.status === 'offline'
-          ? state.reason
-          : state.status === 'pairing'
-            ? `esperando a que reclamen el código ${state.code}`
-            : state.status === 'idle'
-              ? 'emparejada, sin música'
-              : 'reproduciendo'
+        `modo ${channel} · ` +
+          (state.status === 'offline'
+            ? state.reason
+            : state.status === 'pairing'
+              ? `esperando a que reclamen el código ${state.code}`
+              : state.status === 'idle'
+                ? 'emparejada, sin música'
+                : 'reproduciendo')
       );
 
       if (state.status === 'pairing') {
@@ -240,7 +246,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [paired]);
+  }, [paired, channel]);
 
   /* ---------------- Demostración ---------------- */
 
