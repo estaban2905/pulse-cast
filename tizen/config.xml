@@ -16,8 +16,16 @@
         version="1.0.0"
         viewmodes="maximized">
 
-  <tizen:application id="PulseMusic1.PulseTV"
-                     package="PulseMusic1"
+  <!--
+    `package` tiene que medir **exactamente 10 caracteres** alfanuméricos: es una
+    regla de Tizen, no una convención. Con once, la instalación falla al instante
+    y sin dejar rastro en el log del televisor, que es de los errores más caros
+    de diagnosticar porque parece un problema de certificado.
+
+    `id` es siempre `<package>.<nombre>`.
+  -->
+  <tizen:application id="PulseMusic.PulseTV"
+                     package="PulseMusic"
                      required_version="2.4"/>
 
   <name>Pulse TV</name>
