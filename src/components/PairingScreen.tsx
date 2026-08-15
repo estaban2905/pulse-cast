@@ -27,22 +27,27 @@ export function PairingScreen({ code }: PairingScreenProps) {
         transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
         className="relative">
 
-        <p className="font-semibold uppercase tracking-[0.3em] text-white/45" style={{ fontSize: '1.3vw' }}>
+        {/* Todo con `clamp`: esta pantalla se ve en un televisor de 1920px y
+            también en el móvil, cuando se prueba. Con `vw` a secas, el texto de
+            apoyo bajaba a 5px en el teléfono y parecía que no había nada. */}
+        <p
+          className="font-semibold uppercase tracking-[0.3em] text-white/45"
+          style={{ fontSize: 'clamp(13px, 1.3vw, 26px)' }}>
           Pulse en tu televisor
         </p>
 
-        <p className="mt-[3vh] text-white/75" style={{ fontSize: '1.9vw' }}>
+        <p className="mt-[3vh] text-white/75" style={{ fontSize: 'clamp(15px, 1.9vw, 34px)' }}>
           Abre Pulse en el teléfono y ve a
           <span className="font-semibold text-white"> Ajustes → Televisores</span>
         </p>
 
         <div
           className="text-glow mt-[5vh] font-display font-extrabold leading-none text-c1"
-          style={{ fontSize: '11vw', letterSpacing: '0.12em' }}>
+          style={{ fontSize: 'clamp(56px, 11vw, 220px)', letterSpacing: '0.12em' }}>
           {code}
         </div>
 
-        <p className="mt-[5vh] text-white/40" style={{ fontSize: '1.3vw' }}>
+        <p className="mt-[5vh] text-white/40" style={{ fontSize: 'clamp(12px, 1.3vw, 24px)' }}>
           El código cambia cada dos minutos. Se toma el que esté en pantalla.
         </p>
       </motion.div>
