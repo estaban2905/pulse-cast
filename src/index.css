@@ -28,6 +28,42 @@
 .inset-y-0 { top: 0; bottom: 0; }
 
 /*
+ * Botones sin el estilo por defecto del navegador.
+ *
+ * Medido en el televisor: los botones salían con `background-color:
+ * rgb(221,221,221)`, que es el gris que Chromium da a cualquier `<button>` sin
+ * fondo propio. Los iconos son blancos, así que quedaban blanco sobre gris
+ * claro —invisibles—, y la barra de controles se veía como una fila de cápsulas
+ * vacías.
+ *
+ * El *reset* de Tailwind debería dejarlos transparentes, pero en este navegador
+ * no llega a aplicarse. Estas reglas lo hacen explícito y no dependen de él.
+ */
+.stage button,
+.stage [role='button'] {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/*
+ * El icono hereda el color del botón.
+ *
+ * `lucide-react` dibuja con `stroke="currentColor"`, así que basta con que el
+ * color llegue: sin esto, un SVG dentro de un botón se quedaba con el color del
+ * texto del sistema en lugar del de la interfaz.
+ */
+.stage svg {
+  stroke: currentColor;
+  fill: none;
+}
+
+/*
  * `aspect-ratio` es de Chromium 88, así que en el televisor la carátula queda
  * con altura **cero**: se ve el hueco y ninguna imagen.
  *
