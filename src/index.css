@@ -23,9 +23,20 @@
  * Chromium 69 sí entiende. En un navegador moderno son redundantes e
  * inofensivas.
  */
-.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
-.inset-x-0 { left: 0; right: 0; }
-.inset-y-0 { top: 0; bottom: 0; }
+/*
+ * Se repite el selector para ganar en especificidad.
+ *
+ * Con `.inset-0` a secas empataba con la regla de Tailwind y ganaba la última
+ * del archivo, que es la suya —`inset: 0px`, inválida aquí y por tanto sin
+ * efecto—. Medido en el televisor: el fondo a pantalla completa salía con
+ * tamaño **0x0**, y con él se descolocaban el visualizador y la carátula.
+ *
+ * Duplicar la clase sube la especificidad sin recurrir a `!important`, que
+ * ensuciaría cualquier ajuste posterior.
+ */
+.inset-0.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.inset-x-0.inset-x-0 { left: 0; right: 0; }
+.inset-y-0.inset-y-0 { top: 0; bottom: 0; }
 
 /*
  * Botones sin el estilo por defecto del navegador.

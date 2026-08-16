@@ -19,6 +19,17 @@ export function FitTitle({ texto, maxVw }: { texto: string; maxVw: number }) {
 
     const calcular = () => {
       const max = root.clientWidth;
+
+      /*
+       * Sin ancho todavía no se puede decidir nada.
+       *
+       * En el primer fotograma el contenedor mide 0, y el bucle de abajo
+       * encogía hasta el suelo de 1.6vw: el título acababa en 27px en una
+       * pantalla de 1920. `ResizeObserver` vuelve a llamar aquí en cuanto el
+       * navegador calcula el diseño de verdad.
+       */
+      if (max <= 0) return;
+
       probe.style.fontSize = maxVw + 'vw';
       probe.textContent = texto;
       const natural = probe.scrollWidth;
