@@ -33,10 +33,10 @@ export function VideoMode() {
                 <PlayingBars bars={3} />
                 <span>{isPlaying ? 'VIDEO EN VIVO' : 'VIDEO EN PAUSA'}</span>
               </div>
-              <h2 className="text-glow mt-2 truncate font-display text-[clamp(2rem,3.6vw,4rem)] font-extrabold leading-tight">
+              <h2 className="text-glow mt-2 truncate font-display text-[3.6vw] font-extrabold leading-tight">
                 {track.title}
               </h2>
-              <p className="mt-1 font-display text-[clamp(1.1rem,1.6vw,1.8rem)] font-semibold text-white/70">
+              <p className="mt-1 font-display text-[1.6vw] font-semibold text-white/70">
                 {track.artist}
               </p>
             </div>

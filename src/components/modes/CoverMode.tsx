@@ -5,10 +5,12 @@ import { audioSim } from '../../utils/audioSim';
 import { Visualizer } from '../Visualizer';
 import { ProgressBar } from '../ProgressBar';
 import { PlayingBars } from '../PlayingBars';
+import { FitTitle } from './FitTitle';
 
 export function CoverMode() {
-  const { track, isPlaying, settings } = usePlayer();
+  const { track, tracks, index, settings } = usePlayer();
   const artRef = useRef<HTMLDivElement | null>(null);
+  const upNext = tracks[(index + 1) % tracks.length];
 
   useEffect(() => {
     let raf = 0;
@@ -70,16 +72,12 @@ export function CoverMode() {
             exit={{ opacity: 0, y: -18 }}
             transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}>
             
-            {/* El álbum solo si viene. La app no siempre lo manda, y una fila
-                con un punto suelto y nada al lado se ve como un fallo. */}
-            {track.album ?
             <div className="flex items-center gap-4 text-lg font-semibold tracking-wide text-white/55">
-                <span className="truncate">{track.album}</span>
-              </div> :
-            null}
-            <h1 className="text-glow mt-3 font-display text-[5.6vw] font-extrabold leading-[0.94] tracking-tight">
-              {track.title}
-            </h1>
+              <span className="truncate">{track.album}</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-c2" />
+              <span className="tabular-nums">{track.year}</span>
+            </div>
+            <FitTitle texto={track.title} maxVw={5.6} />
             <p className="mt-4 font-display text-[2.4vw] font-semibold text-c1">
               {track.artist}
             </p>
@@ -88,13 +86,11 @@ export function CoverMode() {
 
         <ProgressBar className="mt-[4vh] max-w-[46vw]" />
 
-        {/* Aquí iba «SIGUIENTE», y no puede ir: la cola vive en el teléfono y
-            el receptor solo recibe la canción actual. Con una sola pista, ese
-            renglón anunciaba como siguiente la que ya estaba sonando. */}
         <div className="mt-[3vh] flex items-center gap-5 text-lg text-white/50">
           <PlayingBars bars={5} />
-          <span className="font-semibold tracking-[0.14em] text-white/70">
-            {isPlaying ? 'REPRODUCIENDO' : 'EN PAUSA'}
+          <span className="font-semibold tracking-[0.14em] text-white/70">SIGUIENTE</span>
+          <span className="truncate text-white/85">
+            {upNext.title} — {upNext.artist}
           </span>
         </div>
 

@@ -23,10 +23,10 @@ export function ImmersiveMode() {
         <Visualizer style="spectrum" intensity={0.8} />
       </div>
       <div className="absolute inset-x-0 bottom-0 px-[6vw] pb-[6vh]">
-        <h2 className="text-glow max-w-[70vw] font-display text-[clamp(3rem,7vw,9rem)] font-extrabold leading-[0.9] tracking-tight">
+        <h2 className="text-glow max-w-[70vw] font-display text-[7vw] font-extrabold leading-[0.9] tracking-tight">
           {track.title}
         </h2>
-        <p className="mt-4 font-display text-[clamp(1.4rem,2.4vw,3rem)] font-semibold text-c1">
+        <p className="mt-4 font-display text-[2.4vw] font-semibold text-c1">
           {track.artist} · {track.year}
         </p>
         <ProgressBar size="sm" showTimes={false} className="mt-8 max-w-[60vw]" />

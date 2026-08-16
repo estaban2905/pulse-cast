@@ -1,20 +1,27 @@
-/**
+﻿/**
  * El mando a distancia.
  *
- * La primera versión de esta pantalla no tenía ningún control, razonando que un
- * televisor no tiene puntero. Es cierto y era el razonamiento equivocado: un
- * televisor **tiene mando**, y sin atender sus teclas el usuario se queda
- * encerrado en la aplicación sin poder cambiar de vista ni salir.
+ * Esta es una aplicación de televisor: se maneja con el mando y funciona sola.
+ * Las flechas tienen doble función: fuera de cualquier elemento focuseable hacen
+ * acciones globales (cambiar canción, abrir biblioteca, cambiar modo); dentro
+ * de un elemento focuseable son del hook de navegación espacial y mueven el
+ * cursor entre botones. El cambio se detecta con document.activeElement.
  */
 
-/** Códigos del mando de Samsung. */
 const TECLAS = {
   atras: [10009, 10182],
   izquierda: 37,
-  derecha: 39,
   arriba: 38,
+  derecha: 39,
   abajo: 40,
-  aceptar: 13
+  aceptar: 13,
+  reproducirPausar: [10252, 415, 19],
+  siguiente: [417, 10233],
+  anterior: [412, 10232],
+  rojo: 403,
+  verde: 404,
+  amarillo: 405,
+  azul: 406
 } as const;
 
 interface TizenApplication {
@@ -36,57 +43,94 @@ declare global {
   }
 }
 
-/** Cierto cuando la página corre empaquetada dentro de un televisor Samsung. */
 export const isTizen = (): boolean => Boolean(window.tizen?.application);
 
-export type AccionMando = 'anterior' | 'siguiente' | 'alternar';
+export type AccionMando =
+  | 'arriba'
+  | 'abajo'
+  | 'izquierda'
+  | 'derecha'
+  | 'aceptar'
+  | 'atras'
+  | 'reproducirPausar'
+  | 'siguiente'
+  | 'anterior'
+  | 'biblioteca'
+  | 'modo';
 
 /**
- * Empieza a escuchar el mando.
- *
- * `registerKey` no es opcional para las teclas de color y multimedia: el
- * televisor no las entrega a la aplicación hasta que esta declara que las
- * quiere. Las flechas y «atrás» sí llegan siempre, pero registrarlas no molesta
- * y deja el comportamiento explícito.
+ * Devuelve 	rue desde el manejador significa «ya lo he gestionado»; si no, la
+ * tecla «atrás» cierra la aplicación. Así una vista abierta puede quedarse con
+ * ese botón para cerrarse ella primero.
  */
-export function setupTizen(alPulsar?: (accion: AccionMando) => void): void {
-  if (!isTizen()) return;
-
+export function setupTizen(alPulsar: (accion: AccionMando) => boolean | void): void {
+  // Las teclas multimedia y de color no llegan a la aplicación hasta que esta
+  // declara que las quiere.
   const entrada = window.tizen?.tvinputdevice;
   if (entrada) {
-    for (const nombre of ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'ColorF0Red']) {
+    for (const nombre of [
+      'MediaPlayPause',
+      'MediaPlay',
+      'MediaPause',
+      'MediaTrackPrevious',
+      'MediaTrackNext',
+      'ColorF0Red',
+      'ColorF1Green',
+      'ColorF2Yellow',
+      'ColorF3Blue'
+    ]) {
       try {
         entrada.registerKey(nombre);
       } catch {
-        // Un televisor que no tenga esa tecla no es motivo para no arrancar.
+        // Un televisor sin esa tecla no es motivo para no arrancar.
       }
     }
   }
 
   window.addEventListener('keydown', (event) => {
-    const code = event.keyCode;
+    const c = event.keyCode;
 
-    if ((TECLAS.atras as readonly number[]).includes(code)) {
-      event.preventDefault();
+    // Si el foco está dentro de un elemento navegable (barra de controles,
+    // biblioteca, modal), las flechas son del hook de navegación espacial y no
+    // deben disparar acciones globales como cambiar de canción.
+    const foco = document.activeElement as HTMLElement | null;
+    const enNavegable =
+      !!foco &&
+      ['BUTTON', 'INPUT', 'A', 'TEXTAREA', 'SELECT'].includes(foco.tagName);
+
+    let accion: AccionMando | null = null;
+
+    if ((TECLAS.atras as readonly number[]).includes(c)) accion = 'atras';
+    else if (c === TECLAS.arriba) accion = 'arriba';
+    else if (c === TECLAS.abajo) accion = 'abajo';
+    else if (c === TECLAS.izquierda) accion = 'izquierda';
+    else if (c === TECLAS.derecha) accion = 'derecha';
+    else if (c === TECLAS.aceptar) accion = 'aceptar';
+    else if ((TECLAS.reproducirPausar as readonly number[]).includes(c)) accion = 'reproducirPausar';
+    else if ((TECLAS.siguiente as readonly number[]).includes(c)) accion = 'siguiente';
+    else if ((TECLAS.anterior as readonly number[]).includes(c)) accion = 'anterior';
+    else if (c === TECLAS.amarillo) accion = 'biblioteca';
+    else if (c === TECLAS.azul) accion = 'modo';
+
+    if (!accion) return;
+
+    const esFlecha =
+      accion === 'izquierda' ||
+      accion === 'derecha' ||
+      accion === 'arriba' ||
+      accion === 'abajo';
+    if (enNavegable && esFlecha) return;
+
+    event.preventDefault();
+
+    const gestionada = alPulsar(accion);
+
+    if (accion === 'atras' && !gestionada && isTizen()) {
       try {
         window.tizen?.application?.getCurrentApplication().exit();
       } catch {
         // Si el sistema no deja cerrar, mejor seguir abierto que reventar.
       }
-      return;
-    }
-
-    if (!alPulsar) return;
-
-    if (code === TECLAS.izquierda || code === TECLAS.arriba) {
-      event.preventDefault();
-      alPulsar('anterior');
-    } else if (code === TECLAS.derecha || code === TECLAS.abajo) {
-      event.preventDefault();
-      alPulsar('siguiente');
-    } else if (code === TECLAS.aceptar) {
-      event.preventDefault();
-      alPulsar('alternar');
     }
   });
 }

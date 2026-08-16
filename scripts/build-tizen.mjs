@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, glob, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -78,6 +78,35 @@ await writeFile(indexPath, classic, 'utf8');
 if (/<script[^>]*type="module"/.test(classic)) {
   console.error('El HTML sigue con type="module"; en el televisor daría pantalla negra.');
   process.exit(1);
+}
+
+/*
+ * Colores en `rgba()` clásico.
+ *
+ * Tailwind emite `rgb(255 255 255 / 0.1)` —sintaxis de CSS Color 4—. Un
+ * navegador que no la interprete descarta la declaración entera, y un botón que
+ * debía ser translúcido se queda sin fondo o hereda uno sólido. En pantalla se
+ * ve como cápsulas blancas macizas donde debería haber controles discretos.
+ *
+ * `rgba(255,255,255,0.1)` significa exactamente lo mismo y lo entiende
+ * cualquier navegador desde hace quince años.
+ */
+const MODERNO = /rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*([\d.]+%?)\s*\)/g;
+
+// El CSS acaba **dentro del JS**: con un solo bundle `iife`, Vite lo inyecta en
+// tiempo de ejecución en lugar de emitir un `.css` aparte. Por eso se recorren
+// los dos.
+for await (const fichero of glob(join(dist, 'assets', '*.{css,js}'))) {
+  const antes = await readFile(fichero, 'utf8');
+  const despues = antes.replace(MODERNO, (_, r, g, b, a) => {
+    const alfa = a.endsWith('%') ? Number(a.slice(0, -1)) / 100 : a;
+    return `rgba(${r},${g},${b},${alfa})`;
+  });
+  if (antes !== despues) {
+    const cuantos = (antes.match(MODERNO) ?? []).length;
+    await writeFile(fichero, despues, 'utf8');
+    console.log(`  ${cuantos} colores convertidos a rgba(): ${fichero.split(/[\\/]/).pop()}`);
+  }
 }
 
 await rm(out, { recursive: true, force: true });

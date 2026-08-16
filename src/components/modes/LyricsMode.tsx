@@ -14,6 +14,36 @@ export function LyricsMode() {
     lyrics.reduce((acc, line, i) => position >= line.t ? i : acc, 0)
   );
   const line = lyrics[current];
+
+  /*
+   * Sin letra no hay nada que cantar, y hay que decirlo.
+   *
+   * Este componente daba por hecho que siempre había al menos un verso, porque
+   * en el diseño original las canciones venían con letra escrita a mano. Con el
+   * catálogo real muchas no la tienen, y al cambiar a esta vista con el mando
+   * `lyrics[0]` era `undefined`: la aplicación entera se caía con
+   * «Cannot read property 't' of undefined» y la pantalla quedaba muerta.
+   */
+  if (!line) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center px-[8vw] text-center">
+        <div className="mb-[3vh] flex items-center gap-4 text-lg tracking-[0.2em] text-white/40">
+          <PlayingBars bars={4} />
+          <span className="font-semibold">KARAOKE</span>
+        </div>
+        <p className="font-display font-extrabold text-white/70" style={{ fontSize: '3vw' }}>
+          Esta canción no tiene letra
+        </p>
+        <p className="mt-[2vh] text-white/35" style={{ fontSize: '1.4vw' }}>
+          {track.title} — {track.artist}
+        </p>
+        <p className="mt-[5vh] text-white/25" style={{ fontSize: '1.2vw' }}>
+          Pulsa ▲ o ▼ para ver la carátula o el visualizador
+        </p>
+      </div>);
+
+  }
+
   const nextT = lyrics[current + 1]?.t ?? track.duration;
   const spanProgress = Math.max(
     0,

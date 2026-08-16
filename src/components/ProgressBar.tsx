@@ -8,53 +8,54 @@ interface ProgressBarProps {
   className?: string;
 }
 
-/**
- * Barra de progreso, solo para mirar.
- *
- * Antes era un control: se podía pulsar y arrastrar para saltar. Aquí no tiene
- * sentido —un Chromecast no tiene puntero— y además engañaba, porque `seek` en
- * el receptor no hace nada. Sin `role="slider"` ni `tabIndex`, un lector de
- * pantalla tampoco lo anuncia como algo que se pueda manejar.
- */
 export function ProgressBar({ size = 'lg', showTimes = true, className = '' }: ProgressBarProps) {
-  const { position, track } = usePlayer();
-
-  // La duración puede no venir: el emisor no siempre la manda en los metadatos.
-  // Sin esta guarda, `position / 0` da `Infinity`, `Math.min` lo deja en `NaN`
-  // y el ancho acaba siendo `NaN%`, que el navegador descarta en silencio: la
-  // barra se queda vacía toda la canción y no hay error en ninguna parte.
-  const known = Number.isFinite(track.duration) && track.duration > 0;
-  const pct = known ? Math.min(100, Math.max(0, position / track.duration * 100)) : 0;
+  const { position, track, seek } = usePlayer();
+  const pct = Math.min(100, position / track.duration * 100);
   const height = size === 'lg' ? 'h-3' : 'h-1.5';
+
+  const onSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    seek((e.clientX - rect.left) / rect.width * track.duration);
+  };
 
   return (
     <div className={className}>
-      <div className={`relative w-full rounded-full bg-white/10 ${height}`}>
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label="Progreso de la canción"
+        aria-valuemin={0}
+        aria-valuemax={Math.floor(track.duration)}
+        aria-valuenow={Math.floor(position)}
+        onClick={onSeek}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') seek(position + 5);
+          if (e.key === 'ArrowLeft') seek(position - 5);
+        }}
+        className={`group relative w-full cursor-pointer rounded-full bg-white/10 ${height} focus:outline-none focus-visible:ring-2 focus-visible:ring-c2`}>
+        
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-c2 to-c1"
           style={{
             width: `${pct}%`,
-            boxShadow: '0 0 calc(22px * var(--glow)) rgb(var(--c1-rgb) / 0.75)',
-            transition: 'width 200ms linear'
+            boxShadow: '0 0 calc(22px * var(--glow)) rgb(var(--c1-rgb) / 0.75)'
           }} />
-
+        
         <div
-          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-4 ring-c1/40 ${
+          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-4 ring-c1/40 transition-transform duration-150 ease-out group-hover:scale-125 ${
           size === 'lg' ? 'h-5 w-5' : 'h-3 w-3'}`
           }
-          style={{ left: `${pct}%`, transition: 'left 200ms linear' }} />
-
+          style={{ left: `${pct}%` }} />
+        
       </div>
       {showTimes &&
       <div
         className={`mt-3 flex items-center justify-between font-sans tabular-nums text-white/60 ${
         size === 'lg' ? 'text-xl' : 'text-sm'}`
         }>
-
+        
           <span className="text-white/85">{formatTime(position)}</span>
-          {/* Un guion en lugar de «0:00»: no saber cuánto dura es distinto de
-              que dure cero, y en pantalla eso se nota. */}
-          <span>{known ? formatTime(track.duration) : '—:—'}</span>
+          <span>{formatTime(track.duration)}</span>
         </div>
       }
     </div>);

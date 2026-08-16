@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   ActivityIcon,
   FilmIcon,
@@ -19,6 +19,7 @@ import {
   VolumeXIcon } from
 'lucide-react';
 import { usePlayer } from '../contexts/PlayerContext';
+import { useSpatialNav } from '../navigation/useSpatialNav';
 
 interface IconButtonProps {
   label: string;
@@ -47,6 +48,7 @@ function IconButton({ label, active = false, onClick, children }: IconButtonProp
 }
 
 export function ControlBar() {
+  const barraRef = useRef<HTMLDivElement>(null);
   const {
     isPlaying,
     togglePlay,
@@ -76,8 +78,14 @@ export function ControlBar() {
 
   const isFav = favorites.includes(track.id);
 
+  // La barra solo captura las flechas si está visible y no hay otra vista
+  // (biblioteca, playlist, settings) robándose el foco.
+  const navActiva = chromeVisible && !playlistOpen;
+  useSpatialNav({ contenedor: barraRef, eje: 'x', activo: navActiva });
+
   return (
     <div
+      ref={barraRef}
       className="glass pointer-events-auto flex items-center gap-7 rounded-[28px] px-7 py-4 transition-all duration-300 ease-smooth"
       style={{
         opacity: chromeVisible ? 1 : 0,

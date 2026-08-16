@@ -7,27 +7,25 @@
   useRef,
   useState
 } from 'react';
-import { tracks as demoTracks } from '../data/tracks';
 import { hexToRgbTriplet, themes } from '../data/themes';
 import { audioSim } from '../utils/audioSim';
 import { fetchLyrics, noLyrics, type Lyrics } from '../services/lyricsApi';
-import { findTrack } from '../services/catalogApi';
-import { detener, sincronizar, volumenTv } from '../services/tvAudio';
-import { currentPosition, enviarOrden, pollTv, type TvState } from '../services/tvApi';
-import { isCastDevice, startCastReceiver, type CastMediaInfo } from '../cast/castReceiver';
-import { setupTizen } from '../tizen';
+import type { CatalogTrack } from '../services/catalogApi';
+import * as reproductor from '../services/localPlayer';
+import { currentPosition, pollTv, type TvState } from '../services/tvApi';
+import { setupTizen, type AccionMando } from '../tizen';
 import type { PlayerMode, RepeatMode, Settings, Track, VisualTheme, VizStyle } from '../types/player';
 
 /**
- * El estado de la pantalla, venga de donde venga.
+ * El estado de la aplicación de televisor.
  *
- * Hay tres formas de que una canción llegue hasta aquí, y las tres acaban en el
- * mismo sitio para que los modos, el visualizador y el fondo no se enteren:
+ * **Funciona sola.** Se abre con el mando, se navega con el mando y reproduce
+ * su propio audio: no hace falta ningún teléfono. La primera versión dependía
+ * del móvil para todo, y eso convertía una aplicación de televisor en un cartel
+ * que solo dibujaba lo que sonaba en otro sitio.
  *
- * - **Cast**: el Chromecast abre esta página y le pasa la canción. Es lo cómodo.
- * - **Emparejada**: para Samsung y LG, que no hablan Cast. La pantalla enseña un
- *   código y luego pregunta al servidor qué suena.
- * - **Demostración**: `?demo=1`, para trabajar el diseño sin nada conectado.
+ * El teléfono sigue pudiendo mandar música —si alguien empareja el suyo, esta
+ * pantalla lo sigue— pero es un extra, no un requisito.
  */
 
 const defaultSettings: Settings = {
@@ -49,8 +47,10 @@ const defaultSettings: Settings = {
   showPlaylist: false
 };
 
-/** Cada cuánto se le pregunta al servidor. */
-const POLL_MS = 2_000;
+/** Cada cuánto se mira si un teléfono emparejado mandó algo. */
+const POLL_MS = 3_000;
+
+const VISTAS: PlayerMode[] = ['cover', 'lyrics', 'visualizer', 'party', 'video', 'immersive'];
 
 interface PlayerContextValue {
   tracks: Track[];
@@ -58,8 +58,9 @@ interface PlayerContextValue {
   index: number;
   isPlaying: boolean;
   position: number;
+  duration: number;
+
   mode: PlayerMode;
-  /** La elige el mando; se olvida al cambiar de canción. */
   setMode: (m: PlayerMode) => void;
   vizStyle: VizStyle;
   setVizStyle: (s: VizStyle) => void;
@@ -68,13 +69,10 @@ interface PlayerContextValue {
   togglePartyMode: () => void;
   settings: Settings;
 
-  /*
-   * Transporte. No lo ejecuta el televisor: se lo pide al teléfono, que es
-   * quien tiene la cola y decide qué suena después.
-   */
   togglePlay: () => void;
   next: () => void;
   prev: () => void;
+  seek: (seconds: number) => void;
   shuffle: boolean;
   toggleShuffle: () => void;
   repeat: RepeatMode;
@@ -84,39 +82,36 @@ interface PlayerContextValue {
   muted: boolean;
   toggleMute: () => void;
 
-  /* Superficies que el diseño original abre desde la barra de controles. */
   playlistOpen: boolean;
   setPlaylistOpen: (open: boolean) => void;
-  setSettingsOpen: (open: boolean) => void;
   settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
   toggleFullscreen: () => void;
   favorites: string[];
   toggleFavorite: (id: string) => void;
-  /** Nadie ha mandado música todavía. */
-  idle: boolean;
-  /** El código a enseñar, o nulo si no hay que emparejar. */
+  /** Reproduce una fila de la lista. La usa el panel de playlist. */
+  selectTrack: (i: number) => void;
+  updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  setThemeId: (id: string) => void;
+
+  /** La biblioteca, y qué fila tiene el cursor del mando. */
+  libraryOpen: boolean;
+  librarySelection: number;
+  onLibraryTracks: (pistas: CatalogTrack[]) => void;
+
+  /** Un teléfono emparejado quiere enviar música: se enseña su código. */
   pairingCode: string | null;
-  /** No se pudo hablar con el servidor. */
-  offline: boolean;
-  /**
-   * Qué está pasando, en una línea.
-   *
-   * Se enseña en una esquina siempre. En un televisor no hay consola que abrir,
-   * así que sin esto la única información disponible es «no se ve el código», y
-   * con eso no se diagnostica nada.
-   */
-  diagnostic: string;
-  synced: boolean;
   chromeVisible: boolean;
-  seek: (seconds: number) => void;
+  synced: boolean;
+  diagnostic: string;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
-const idleTrack: Track = {
+const pistaVacia: Track = {
   id: 'idle',
   title: 'Pulse',
-  artist: 'Listo para reproducir',
+  artist: 'Elige una canción',
   album: '',
   year: new Date().getFullYear(),
   duration: 0,
@@ -125,290 +120,122 @@ const idleTrack: Track = {
   lyrics: []
 };
 
-function toTrack(
-  info: { id: string; title: string; artist: string; album: string; cover: string; duration: number },
-  lyrics: Lyrics
-): Track {
+function aTrack(p: CatalogTrack | null, lyrics: Lyrics): Track {
+  if (!p) return pistaVacia;
   return {
-    id: info.id,
-    title: info.title,
-    artist: info.artist,
-    album: info.album,
+    id: p.id,
+    title: p.title,
+    artist: p.artist,
+    album: p.album,
     year: new Date().getFullYear(),
-    duration: info.duration,
-    cover: info.cover,
-    // El visualizador necesita un pulso y el API no manda BPM. La animación no
-    // pretende ir a compás, solo moverse.
+    duration: p.duration,
+    cover: p.coverUrl,
+    // El API no manda BPM y el visualizador necesita un pulso. No pretende ir a
+    // compás: solo moverse.
     bpm: 104,
     lyrics: lyrics.lines
   };
 }
 
-const fromCast = (media: CastMediaInfo) => ({
-  id: media.trackId ?? 'unknown',
-  title: media.title,
-  artist: media.artist,
-  album: media.album,
-  cover: media.coverUrl ?? '',
-  duration: media.duration
-});
-
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
-  const onCast = isCastDevice();
-  const isDemo = !onCast && new URLSearchParams(window.location.search).has('demo');
-  const paired = !onCast && !isDemo;
-
-  // Qué camino tomó, a la vista. Distinguir «se cree un Chromecast» de «está
-  // emparejando» costó una tarde de pruebas a ciegas: desde fuera los dos se
-  // veían igual, una pantalla de reposo que no hacía nada.
-  const channel = onCast ? 'cast' : isDemo ? 'demo' : 'emparejada';
-
-  const [info, setInfo] = useState<ReturnType<typeof fromCast> | null>(null);
+  const [local, setLocal] = useState<reproductor.EstadoLocal | null>(null);
   const [lyrics, setLyrics] = useState<Lyrics>(noLyrics);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [position, setPosition] = useState(0);
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [themeId, setThemeId] = useState('neon');
+
+  const [manual, setManual] = useState<PlayerMode | null>(null);
+  const [vizStyle, setVizStyle] = useState<VizStyle>('spectrum');
+  const [muted, setMuted] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [offline, setOffline] = useState(false);
-  const [diagnostic, setDiagnostic] = useState(`modo ${channel} · iniciando…`);
-  const [settings] = useState<Settings>(defaultSettings);
+  const [diagnostic, setDiagnostic] = useState('iniciando…');
 
-  const theme = themes.find((t) => t.id === 'neon') ?? themes[0];
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [librarySelection, setLibrarySelection] = useState(0);
+  const pistasRef = useRef<CatalogTrack[]>([]);
 
-  /* ---------------- Chromecast ---------------- */
+  const theme = themes.find((t) => t.id === themeId) ?? themes[0];
 
+  /* ---------------- El reproductor de este televisor ---------------- */
+
+  useEffect(() => reproductor.suscribir(setLocal), []);
+
+  // Al arrancar se prepara el catálogo entero como cola, pero **sin sonar**:
+  // que una aplicación empiece a dar música sola al encenderla es agresivo.
   useEffect(() => {
-    if (!onCast) return;
-
-    startCastReceiver({
-      onMedia: (media) => {
-        setInfo(fromCast(media));
-        setPosition(0);
-        setLyrics(noLyrics);
-      },
-      onState: ({ isPlaying: playing, position: seconds }) => {
-        setIsPlaying(playing);
-        setPosition(seconds);
-      },
-      onEnded: () => {
-        setInfo(null);
-        setIsPlaying(false);
-        setPosition(0);
-        setLyrics(noLyrics);
-      }
+    void reproductor.arrancarCatalogo().then((ids) => {
+      if (ids.length) reproductor.preparar(ids);
+      setDiagnostic(`${ids.length} canciones · AMARILLO abre tu música`);
     });
-  }, [onCast]);
+  }, []);
 
-  /* ---------------- Emparejada (Samsung, LG, navegador) ---------------- */
+  /* ---------------- Un teléfono emparejado, si lo hay ---------------- */
 
-  const currentId = useRef<string | null>(null);
+  const ultimaDelMovil = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!paired) return;
-
-    let cancelled = false;
+    let cancelado = false;
 
     const tick = async () => {
-      const state: TvState = await pollTv();
-      if (cancelled) return;
+      const estado: TvState = await pollTv();
+      if (cancelado) return;
 
-      setOffline(state.status === 'offline');
-      setDiagnostic(
-        `modo ${channel} · ` +
-          (state.status === 'offline'
-            ? state.reason
-            : state.status === 'pairing'
-              ? `esperando a que reclamen el código ${state.code}`
-              : state.status === 'idle'
-                ? 'emparejada, sin música'
-                : 'reproduciendo')
-      );
-
-      if (state.status === 'pairing') {
-        setPairingCode(state.code);
-        setInfo(null);
-        setIsPlaying(false);
+      if (estado.status === 'pairing') {
+        setPairingCode(estado.code);
         return;
       }
-
       setPairingCode(null);
 
-      if (state.status === 'idle') {
-        setInfo(null);
-        setIsPlaying(false);
-        currentId.current = null;
-        // Sin canción no hay nada que sonar: se suelta el audio para no dejar
-        // el televisor con un búfer cargado indefinidamente.
-        detener();
-        return;
-      }
+      if (estado.status !== 'playing') return;
 
-      if (state.status !== 'playing') return;
+      // El teléfono manda solo cuando cambia de canción: si no, mandaría cada
+      // pocos segundos sobre lo que se esté eligiendo con el mando, y no se
+      // podría usar el televisor mientras haya un móvil emparejado.
+      const { nowPlaying } = estado;
+      if (ultimaDelMovil.current === nowPlaying.trackId) return;
+      ultimaDelMovil.current = nowPlaying.trackId;
 
-      const { nowPlaying } = state;
-      const segundos = currentPosition(nowPlaying);
-      setIsPlaying(nowPlaying.isPlaying);
-      setPosition(segundos);
-
-      // El audio suena **aquí**, en el televisor. El teléfono solo dice qué,
-      // dónde y si va: es el mando, no el altavoz.
-      const pista = await findTrack(nowPlaying.trackId);
-      if (cancelled) return;
-      if (pista?.streamUrl) {
-        sincronizar({
-          streamUrl: pista.streamUrl,
-          posicion: segundos,
-          reproduciendo: nowPlaying.isPlaying
-        });
-      }
-
-      // Solo se resuelve el catálogo al cambiar de canción, no en cada vuelta.
-      if (currentId.current !== nowPlaying.trackId) {
-        currentId.current = nowPlaying.trackId;
-        setLyrics(noLyrics);
-
-        const track = pista;
-        if (cancelled || currentId.current !== nowPlaying.trackId) return;
-
-        setInfo(
-          track
-            ? {
-                id: track.id,
-                title: track.title,
-                artist: track.artist,
-                album: track.album,
-                cover: track.coverUrl,
-                duration: track.duration
-              }
-            : // El catálogo no la conoce —recién publicada, o caché viejo—. Se
-              // enseña lo que se sabe en vez de quedarse en la pantalla de espera.
-              { id: nowPlaying.trackId, title: 'Reproduciendo', artist: '', album: '', cover: '', duration: 0 }
-        );
-      }
+      await reproductor.reproducir([nowPlaying.trackId], 0);
+      reproductor.saltar(currentPosition(nowPlaying));
     };
 
     void tick();
     const timer = window.setInterval(() => void tick(), POLL_MS);
     return () => {
-      cancelled = true;
+      cancelado = true;
       window.clearInterval(timer);
     };
-  }, [paired, channel]);
-
-  /* ---------------- Demostración ---------------- */
-
-  useEffect(() => {
-    if (!isDemo) return;
-
-    const demo = demoTracks[0];
-    setInfo({
-      id: demo.id,
-      title: demo.title,
-      artist: demo.artist,
-      album: demo.album,
-      cover: demo.cover,
-      duration: demo.duration
-    });
-    setLyrics({ synced: true, lines: demo.lyrics });
-    setIsPlaying(true);
-
-    const id = window.setInterval(() => {
-      setPosition((p) => (p + 0.25 >= demo.duration ? 0 : p + 0.25));
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [isDemo]);
+  }, []);
 
   /* ---------------- Letra ---------------- */
 
-  const trackId = info?.id ?? null;
+  const trackId = local?.pista?.id ?? null;
 
   useEffect(() => {
-    if (isDemo || !trackId || trackId === 'unknown') return;
-
+    if (!trackId) return;
     const controller = new AbortController();
+    setLyrics(noLyrics);
     void fetchLyrics(trackId, controller.signal).then(setLyrics);
     return () => controller.abort();
-  }, [isDemo, trackId]);
+  }, [trackId]);
 
   /* ---------------- Presentación ---------------- */
 
-  const idle = info === null;
-  const track = useMemo(() => (info ? toTrack(info, lyrics) : idleTrack), [info, lyrics]);
-
-  /**
-   * Qué se enseña, decidido solo. En una TV no hay dónde pulsar.
-   *
-   * Se exige `synced` para la letra: una sin marcas llega con todos los tiempos
-   * a cero y el karaoke los daría todos por cantados, resaltando el final de la
-   * canción desde el primer segundo.
-   */
-  const automatico: PlayerMode = idle ? 'visualizer' : lyrics.synced ? 'lyrics' : 'cover';
-
-  /**
-   * Las vistas por las que pasa el mando, en orden.
-   *
-   * Están todas las del diseño original. La primera versión de esta pantalla
-   * solo tenía tres porque borré las demás dando por hecho que un televisor no
-   * podía manejarlas; sí puede, con las flechas.
-   */
-  const VISTAS: PlayerMode[] = ['cover', 'lyrics', 'visualizer', 'party', 'video', 'immersive'];
-
-  /**
-   * El mando manda sobre la elección automática.
-   *
-   * La vista se elige sola —letra si la hay, si no carátula—, pero quien mira
-   * tiene que poder cambiarla. Sin esto, una canción con letra dejaba al usuario
-   * encerrado en el karaoke sin forma de ver la portada ni el visualizador.
-   *
-   * La elección manual se olvida al cambiar de canción: es una preferencia del
-   * momento, no un ajuste.
-   */
-  const [manual, setManual] = useState<PlayerMode | null>(null);
+  const track = useMemo(() => aTrack(local?.pista ?? null, lyrics), [local?.pista, lyrics]);
+  const automatico: PlayerMode = lyrics.synced ? 'lyrics' : 'cover';
   const mode: PlayerMode = manual ?? automatico;
   const partyMode = mode === 'party';
 
-  const [vizStyle, setVizStyle] = useState<VizStyle>('spectrum');
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState<RepeatMode>('off');
-  const [volume, setVolume] = useState(100);
-  const [muted, setMuted] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [playlistOpen, setPlaylistOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  // La elección manual se olvida al cambiar de canción: es una preferencia del
-  // momento, no un ajuste.
   useEffect(() => setManual(null), [trackId]);
 
-  /*
-   * El mando, una sola vez.
-   *
-   * `setupTizen` añade un escuchador de teclas; registrarlo en cada cambio de
-   * `automatico` dejaba uno nuevo por cada canción, y una pulsación acababa
-   * saltando varias vistas de golpe.
-   */
-  const modoRef = useRef<PlayerMode>(automatico);
-  modoRef.current = mode;
-
   useEffect(() => {
-    setupTizen((accion) => {
-      if (accion === 'alternar') {
-        setManual(null);
-        return;
-      }
-      const desde = VISTAS.indexOf(modoRef.current);
-      const paso = accion === 'anterior' ? -1 : 1;
-      setManual(VISTAS[(desde + paso + VISTAS.length) % VISTAS.length]);
-    });
-    // Sin dependencias a propósito: el escuchador lee el modo por `ref`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    audioSim.playing = isPlaying;
+    audioSim.playing = Boolean(local?.reproduciendo);
     audioSim.bpm = track.bpm;
     audioSim.sensitivity = settings.sensitivity;
     audioSim.speed = settings.vizSpeed;
-  }, [isPlaying, track.bpm, settings.sensitivity, settings.vizSpeed]);
+  }, [local?.reproduciendo, track.bpm, settings.sensitivity, settings.vizSpeed]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -419,72 +246,105 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty('--glow', String(settings.glow * settings.lightIntensity));
     root.style.setProperty('--brightness', String(settings.brightness));
     root.style.setProperty('--panel-opacity', String(settings.panelOpacity));
-  }, [theme, settings.glow, settings.lightIntensity, settings.brightness, settings.panelOpacity]);
+  }, [theme, settings]);
 
-  /**
-   * Entre dos avisos pasan segundos y la letra se vería a saltos. Esto interpola
-   * en medio; cada consulta real vuelve a fijar la posición, así que la cuenta
-   * nunca se separa de la verdad.
-   */
-  const lastTick = useRef(Date.now());
+  /* ---------------- El mando ---------------- */
+
+  const vista = useRef({ libraryOpen, librarySelection, mode });
+  vista.current = { libraryOpen, librarySelection, mode };
+
   useEffect(() => {
-    if (isDemo || !isPlaying) return;
+    setupTizen((accion: AccionMando) => {
+      const { libraryOpen: abierta, librarySelection: fila, mode: actual } = vista.current;
+      const total = pistasRef.current.length;
 
-    lastTick.current = Date.now();
-    const id = window.setInterval(() => {
-      const now = Date.now();
-      const delta = (now - lastTick.current) / 1000;
-      lastTick.current = now;
-      setPosition((p) => p + delta);
-    }, 100);
-    return () => window.clearInterval(id);
-  }, [isDemo, isPlaying]);
+      // Con la biblioteca abierta, el mando le pertenece entera.
+      if (abierta) {
+        if (accion === 'arriba') setLibrarySelection((f) => Math.max(0, f - 1));
+        else if (accion === 'abajo') setLibrarySelection((f) => Math.min(total - 1, f + 1));
+        else if (accion === 'izquierda') setLibrarySelection((f) => Math.max(0, f - 10));
+        else if (accion === 'derecha') setLibrarySelection((f) => Math.min(total - 1, f + 10));
+        else if (accion === 'aceptar') {
+          const ids = pistasRef.current.map((p) => p.id);
+          void reproductor.reproducir(ids, fila);
+          setLibraryOpen(false);
+        } else if (accion === 'atras' || accion === 'biblioteca') {
+          setLibraryOpen(false);
+        }
+        return true;
+      }
 
-  const seek = useCallback(() => undefined, []);
+      if (accion === 'biblioteca') {
+        setLibrarySelection(Math.max(0, local?.indice ?? 0));
+        setLibraryOpen(true);
+        return true;
+      }
+      if (accion === 'aceptar' || accion === 'reproducirPausar') {
+        reproductor.alternar();
+        return true;
+      }
+      if (accion === 'derecha' || accion === 'siguiente') {
+        void reproductor.siguiente();
+        return true;
+      }
+      if (accion === 'izquierda' || accion === 'anterior') {
+        void reproductor.anterior();
+        return true;
+      }
+      if (accion === 'arriba' || accion === 'abajo' || accion === 'modo') {
+        const paso = accion === 'arriba' ? -1 : 1;
+        const desde = VISTAS.indexOf(actual);
+        setManual(VISTAS[(desde + paso + VISTAS.length) % VISTAS.length]);
+        return true;
+      }
+      // «Atrás» sin nada abierto cierra la aplicación: lo hace `setupTizen`.
+      return false;
+    });
+    // Sin dependencias: el manejador lee el estado por `ref`. Con ellas se
+    // registraría un escuchador nuevo por cada cambio y una pulsación saltaría
+    // varias vistas de golpe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onLibraryTracks = useCallback((pistas: CatalogTrack[]) => {
+    pistasRef.current = pistas;
+  }, []);
 
   const value = useMemo<PlayerContextValue>(
     () => ({
       tracks: [track],
       track,
       index: 0,
-      isPlaying,
-      position,
+      isPlaying: Boolean(local?.reproduciendo),
+      position: local?.posicion ?? 0,
+      duration: local?.duracion ?? track.duration,
+
       mode,
-      setMode: (m: PlayerMode) => setManual(m),
+      setMode: setManual,
       vizStyle,
       setVizStyle,
       theme,
       partyMode,
-      togglePartyMode: () => setManual((actual) => (actual === 'party' ? null : 'party')),
+      togglePartyMode: () => setManual((a) => (a === 'party' ? null : 'party')),
       settings,
 
-      // Cada botón se traduce en una orden para el teléfono. La pantalla no
-      // cambia su estado al pulsar: espera a que el teléfono lo confirme en la
-      // siguiente consulta, que es lo que evita que se vean dos verdades.
-      togglePlay: () => void enviarOrden(isPlaying ? 'pause' : 'play'),
-      next: () => void enviarOrden('next'),
-      prev: () => void enviarOrden('previous'),
-      shuffle,
-      toggleShuffle: () => {
-        setShuffle((s) => !s);
-        void enviarOrden('shuffle');
-      },
-      repeat,
-      cycleRepeat: () => {
-        setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off'));
-        void enviarOrden('repeat');
-      },
-      // El volumen sí es local: lo que suena sale de este televisor.
-      volume,
+      togglePlay: () => reproductor.alternar(),
+      next: () => void reproductor.siguiente(),
+      prev: () => void reproductor.anterior(),
+      seek: (s: number) => reproductor.saltar(s),
+      shuffle: Boolean(local?.aleatorio),
+      toggleShuffle: () => reproductor.alternarAleatorio(),
+      repeat: (local?.repetir ?? 'off') as RepeatMode,
+      cycleRepeat: () => reproductor.ciclarRepetir(),
+      volume: Math.round((local?.volumen ?? 1) * 100),
       setVolume: (v: number) => {
-        setVolume(v);
+        reproductor.volumen(v / 100);
         setMuted(v === 0);
-        volumenTv(v / 100);
       },
       muted,
       toggleMute: () => {
         setMuted((m) => {
-          volumenTv(m ? volume / 100 : 0);
+          reproductor.volumen(m ? 1 : 0);
           return !m;
         });
       },
@@ -494,37 +354,43 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       settingsOpen,
       setSettingsOpen,
       toggleFullscreen: () => {
-        // En un televisor ya se ve a pantalla completa; el botón queda para
-        // cuando esta misma página se abre en un navegador.
         if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
         else void document.documentElement.requestFullscreen().catch(() => undefined);
       },
       favorites,
       toggleFavorite: (id: string) =>
         setFavorites((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id])),
-      idle,
+      selectTrack: (i: number) => void reproductor.reproducir(pistasRef.current.map((t) => t.id), i),
+      updateSetting: (key, valor) => setSettings((s) => ({ ...s, [key]: valor })),
+      setThemeId,
+
+      libraryOpen,
+      librarySelection,
+      onLibraryTracks,
+
       pairingCode,
-      offline,
-      diagnostic,
-      synced: lyrics.synced,
       chromeVisible: true,
-      seek
+      synced: lyrics.synced,
+      diagnostic
     }),
     [
       track,
-      isPlaying,
-      position,
+      local,
       mode,
       vizStyle,
-      partyMode,
       theme,
+      partyMode,
       settings,
-      idle,
+      muted,
+      playlistOpen,
+      settingsOpen,
+      favorites,
+      libraryOpen,
+      librarySelection,
+      onLibraryTracks,
       pairingCode,
-      offline,
-      diagnostic,
       lyrics.synced,
-      seek
+      diagnostic
     ]
   );
 

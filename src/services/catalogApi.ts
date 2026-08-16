@@ -78,6 +78,26 @@ async function load(): Promise<Map<string, CatalogTrack>> {
  * Las llamadas simultáneas comparten la misma descarga: al arrancar, la pantalla
  * puede preguntar por la canción antes de que termine la primera carga.
  */
+/**
+ * Todo el catálogo, para que el televisor pueda navegarlo con el mando.
+ *
+ * `/catalog` es público: la app de TV no necesita cuenta ni teléfono para dejar
+ * elegir música, que es lo que se espera de una aplicación de televisor.
+ */
+export async function listTracks(): Promise<CatalogTrack[]> {
+  if (index) return [...index.values()];
+
+  loading ??= load().finally(() => {
+    loading = null;
+  });
+
+  try {
+    return [...(await loading).values()];
+  } catch {
+    return [];
+  }
+}
+
 export async function findTrack(trackId: string): Promise<CatalogTrack | null> {
   if (index) return index.get(trackId) ?? null;
 
